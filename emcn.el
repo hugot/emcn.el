@@ -1,29 +1,58 @@
-;; -*- lexical-binding: t; -*-
+; emcn.el --- Nextcloud Notes Client for Emacs  -*- lexical-binding: t; -*-
+
+;; Author: Hugo Thunnissen <devel@hugot.nl>
+;; Keywords: notes, nextcloud, tools, convenience
+;; Version: 0
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;;; Code:
 
 (require 'json)
 
 (defvar emcn-token-alist '()
-  "Alist containing oauth tokens for note instances. The car
-  of each element should be the hostname of an instance, and the
-  cdr should be the access token for that instance.")
+  "Alist containing authentication tokens for note instances. The
+  car of each element should be the hostname of an instance, and
+  the cdr should be the access token for that instance.")
 
-(defvar emcn-note-width 80 "Character width of a note")
+(defcustom emcn-note-width 80 "Character width of a note"
+  :type 'integer)
 
-(defvar emcn-enable-drafts nil
-  "Whether or not EMCN should save drafts automatically on idle.")
+(defcustom emcn-enable-drafts t
+  "Whether or not EMCN should save notes automatically on idle."
+  :type 'boolean)
 
-(defvar emcn-category "EMCN Notes"
-  "The category that EMCN should use to store notes under")
+(defcustom emcn-draft-idle-time 5
+  "Seconds of idle time before EMCN saves drafts when `emcn-enable-drafts' is enabled"
+  :type 'integer)
 
-(defvar emcn-host nil
-  "The nextcloud host that EMCN should use to store drafts
-  to. Drafts are stored in the nextcloud notes app.")
+(defcustom emcn-category "EMCN Notes"
+  "The category that EMCN should use to store notes under"
+  :type 'string)
+
+(defcustom emcn-host nil
+  "The nextcloud host that EMCN should use to store notes
+  to. Notes are stored in the nextcloud notes app."
+  :type 'string)
 
 (defvar-local emcn-note-idle-timer nil
-  "Idle timer that saves drafts after a certain idle time. Buffer local.")
+  "Idle timer that saves notes after a certain idle time. Buffer local.")
 
 (defvar-local emcn-note-deleted nil
-  "Whether or not the draft in the current buffer has been
+  "Whether or not the note in the current buffer has been
   deleted from the server after being instructed to do so by the
   user.")
 
@@ -38,7 +67,6 @@
                  (cancel-timer timer)
                (with-current-buffer buffer
                  (when (and (not emcn-note-deleted) (buffer-modified-p buffer))
-                   (message "saving %s with name %s and id %s" buffer emcn-note-name emcn-note-id)
                    (emcn-save)
                    (set-buffer-modified-p nil)))))))
     (setq emcn-note-idle-timer timer)))
@@ -115,9 +143,9 @@ buffer margins"
   "Save oauth token with auth-source format in file"
   (secrets-create-item "default" (emcn--secret-name host) token))
 
-(defun emcn--save-token? (token)
+(defun emcn--save-password? (token)
   (yes-or-no-p
-   (format (concat "Your access token is \"%s\", would you like to save this to your keyring?\n"
+   (format (concat "Would you like to save the provided password to your keyring?\n"
                    "Note: this depends on there being a keyring daemon available on your system.\n"
                    "If you are logged in on a headless server you will likely not have one available.\n"
                    "In that case pick no, the token will then be added to your kill-ring so you can set\n"
@@ -140,42 +168,42 @@ buffer margins"
 
 ;;;###autoload
 (defun emcn ()
+  "Open a new note buffer (create a new note)."
   (interactive)
   (switch-to-buffer (generate-new-buffer "Note"))
   (emcn-mode 1))
 
-(defun emcn--request-drafts-password ()
+(defun emcn--request-notes-password ()
   (let* ((host (emcn--get-host))
          (username (read-string (format "Username for nextcloud instance (%s): "
                                         host)))
-         (password (read-string (format "Password for nextcloud instance (%s): "
-                                       host))))
+         (password (read-passwd (format "Password for nextcloud instance (%s): "
+                                        host) t)))
     (when (and username password)
       (let ((token (base64-encode-string (concat username ":" password))))
-        (when (emcn--save-token? token)
+        (when (emcn--save-password? token)
           (emcn--save-token host token))
         token))))
 
 (defun emcn--get-password ()
   (or (alist-get (emcn--get-host) emcn-token-alist nil nil #'string=)
       (emcn--get-token (emcn--get-host))
-      (emcn--request-drafts-password)))
+      (emcn--request-notes-password)))
 
 (defun emcn--request-host ()
-  (let ((drafts-host (read-string
-                      (concat "Drafts can be saved to a nextcloud instance, "
-                              "but I'd  need to know where your instance is! "
+  (let ((notes-host (read-string
+                      (concat "I  need to know where your instance is! "
                               "please provide your nextcloud hostname: "))))
-    (when drafts-host
-      (setq emcn-host drafts-host)
-      (customize-set-variable 'emcn-host drafts-host)
-      (customize-save-variable 'emcn-host drafts-host))
-    drafts-host))
+    (when notes-host
+      (setq emcn-host notes-host)
+      (customize-set-variable 'emcn-host notes-host)
+      (customize-save-variable 'emcn-host notes-host))
+    notes-host))
 
-(defun emcn-set-drafts-host ()
+(defun emcn-set-notes-host ()
   (interactive)
   (emcn--request-host)
-  (emcn--request-drafts-password))
+  (emcn--request-notes-password))
 
 (defun emcn--get-host ()
   (if emcn-host
@@ -209,7 +237,7 @@ nextcloud instance that has the notes app installed."
   `(("Content-Type" . "application/json")
     ("Authorization" . ,(concat "Basic " (emcn--client-password client)))))
 
-(cl-defmethod emcn--client-get-drafts ((client emcn--client))
+(cl-defmethod emcn--client-get-notes ((client emcn--client))
   (let* ((url-request-extra-headers (emcn--client-url-headers client))
          (response (url-retrieve-synchronously
                     (emcn--client-endpoint
@@ -226,10 +254,10 @@ nextcloud instance that has the notes app installed."
   (setq-local emcn-note-name name)
   (rename-buffer (emcn--note-buffer-name name)))
 
-(defun emcn--note-buffer-name (draft-name)
-  (concat "[ɘ] *note* " draft-name))
+(defun emcn--note-buffer-name (note-name)
+  (concat "[ɘ] *note* " note-name))
 
-(defun emcn--handle-draft-saved (draft-name save-or-update)
+(defun emcn--handle-note-saved (note-name save-or-update)
   (let ((toot-buffer (current-buffer)))
     (lambda (status &rest args)
       (let ((status-code (url-http-parse-response)))
@@ -243,103 +271,103 @@ nextcloud instance that has the notes app installed."
                       (setq emcn-note-id (alist-get 'id json)))))
 
                 (if (not (or (= 201 status-code) (= 200 status-code)))
-                    (message "Something went wrong while saving draft. Status code: %s" status-code)
-                  (progn (with-current-buffer toot-buffer (emcn--set-note-name draft-name))
+                    (message "Something went wrong while saving note. Status code: %s" status-code)
+                  (progn (with-current-buffer toot-buffer (emcn--set-note-name note-name))
                          (message "[EMCN] Note saved."))))
             (json-error (message "[EMCN] Error parsing json from buffer: %s" (buffer-string)))))))))
 
-(cl-defmethod emcn--client-save-draft ((client emcn--client) draft-name content)
+(cl-defmethod emcn--client-save-note ((client emcn--client) note-name content)
   (let* ((url-request-extra-headers (emcn--client-url-headers client))
          (url-request-method "POST")
          (url-request-data (emcn--json-serialize-utf8
-                             `((title . ,draft-name)
+                             `((title . ,note-name)
                                (content . ,content)
                                (category . ,emcn-category)))))
     (url-retrieve (emcn--client-endpoint client "/apps/notes/api/v1/notes")
-                  (emcn--handle-draft-saved draft-name 'save)
+                  (emcn--handle-note-saved note-name 'save)
                   nil t)))
 
-(cl-defmethod emcn--client-update-draft ((client emcn--client) draft-id draft-name content)
-  (message "From update, draft name: %s, draft id: %s" draft-id draft-name)
+(cl-defmethod emcn--client-update-note ((client emcn--client) note-id note-name content)
   (let* ((url-request-extra-headers (emcn--client-url-headers client))
          (url-request-method "PUT")
          (url-request-data (emcn--json-serialize-utf8
-                             `((id . ,draft-id)
-                               (title . ,draft-name)
+                             `((id . ,note-id)
+                               (title . ,note-name)
                                (category . ,emcn-category)
                                (content . ,content)))))
-    (url-retrieve (emcn--client-endpoint client (format "/apps/notes/api/v1/notes/%d" draft-id))
-                  (emcn--handle-draft-saved draft-name 'update)
+    (url-retrieve (emcn--client-endpoint client (format "/apps/notes/api/v1/notes/%d" note-id))
+                  (emcn--handle-note-saved note-name 'update)
                   nil t)))
 
-(cl-defmethod emcn--client-delete-draft ((client emcn--client) draft-id)
+(cl-defmethod emcn--client-delete-note ((client emcn--client) note-id)
   (let* ((url-request-extra-headers (emcn--client-url-headers client))
          (url-request-method "DELETE"))
     (url-retrieve-synchronously
-     (emcn--client-endpoint client (format "/apps/notes/api/v1/notes/%d" draft-id))
+     (emcn--client-endpoint client (format "/apps/notes/api/v1/notes/%d" note-id))
      t)))
 
 
 (defvar-local emcn-note-id nil
-  "The id of the draft in the current buffer")
+  "The id of the note in the current buffer")
 
 (defvar-local emcn-note-name nil
-  "The name of the draft in the current buffer")
+  "The name of the note in the current buffer")
 
 (defun emcn-save ()
   (interactive)
   (let ((client (emcn--get-client))
         (content (buffer-string)))
     (if emcn-note-id
-        (emcn--client-update-draft client
+        (emcn--client-update-note client
                                    emcn-note-id
                                    emcn-note-name
                                    content)
-      (emcn--client-save-draft client
+      (emcn--client-save-note client
                                (format-time-string "%Y, %b %d %H:%M")
                                content))
   (setq emcn-note-deleted nil)))
 
 (defun emcn-set-name (name)
-  (interactive (list (read-string "Draft name: ")))
+  (interactive (list (read-string "Note name: ")))
   (setq emcn-note-name name)
   (emcn-save))
 
 (defun emcn--get-note-alist ()
   (let* ((client (emcn--get-client))
-         (drafts (emcn--client-get-drafts client))
+         (notes (emcn--client-get-notes client))
          (alist))
-    (dolist (draft drafts)
-      (push `(,(alist-get 'title draft) . ,draft)
+    (dolist (note notes)
+      (push `(,(alist-get 'title note) . ,note)
             alist))
 
     alist))
 
 (defun emcn-open ()
+  "Open a note."
   (interactive)
-  (let* ((drafts (emcn--get-note-alist))
-         (draft-name (completing-read "Open Note: "
-                                      (mapcar #'car drafts)
+  (let* ((notes (emcn--get-note-alist))
+         (note-name (completing-read "Open Note: "
+                                      (mapcar #'car notes)
                                       nil t))
-         (draft (alist-get draft-name drafts nil nil #'string=))
-         (buffer (get-buffer-create (emcn--note-buffer-name draft-name))))
+         (note (alist-get note-name notes nil nil #'string=))
+         (buffer (get-buffer-create (emcn--note-buffer-name note-name))))
 
     (switch-to-buffer buffer nil t)
     (unless emcn-mode (emcn-mode))
     (erase-buffer)
-    (insert (alist-get 'content draft))
-    (setq-local emcn-note-id (alist-get 'id draft))
-    (emcn--set-note-name draft-name)))
+    (insert (alist-get 'content note))
+    (setq-local emcn-note-id (alist-get 'id note))
+    (emcn--set-note-name note-name)))
 
 (defun emcn-delete ()
+  "Delete the note opened in the current buffer."
   (interactive)
   (when emcn-note-id
     (let ((client (emcn--get-client)))
-      (emcn--client-delete-draft client emcn-note-id)
+      (emcn--client-delete-note client emcn-note-id)
       (setq emcn-note-id nil)
       (setq emcn-note-name nil)
       (setq emcn-note-deleted t)
       (rename-buffer (generate-new-buffer-name "[ɘ] DELETED")))))
-
 
 (provide 'emcn)
