@@ -29,24 +29,29 @@
   the cdr should be the access token for that instance.")
 
 (defcustom emcn-note-width 80 "Character width of a note"
-  :type 'integer)
+  :type 'integer
+  :group 'emcn)
 
 (defcustom emcn-enable-drafts t
   "Whether or not EMCN should save notes automatically on idle."
-  :type 'boolean)
+  :type 'boolean
+  :group 'emcn)
 
 (defcustom emcn-draft-idle-time 5
   "Seconds of idle time before EMCN saves drafts when `emcn-enable-drafts' is enabled"
-  :type 'integer)
+  :type 'integer
+  :group 'emcn)
 
 (defcustom emcn-category "EMCN Notes"
   "The category that EMCN should use to store notes under"
-  :type 'string)
+  :type 'string
+  :group 'emcn)
 
 (defcustom emcn-host nil
   "The nextcloud host that EMCN should use to store notes
   to. Notes are stored in the nextcloud notes app."
-  :type 'string)
+  :type 'string
+  :group 'emcn)
 
 (defvar-local emcn-note-idle-timer nil
   "Idle timer that saves notes after a certain idle time. Buffer local.")
