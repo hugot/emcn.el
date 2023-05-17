@@ -388,7 +388,7 @@ nextcloud instance that has the notes app installed."
     ("article" . "bootstrap/journal-richtext")
     ("blog" . "bootstrap/journal-richtext")
     ("note" . "bootstrap/journal-text"))
-  "Map tags to icons")e
+  "Map tags to icons")
 
 (defun emcn-notes-list-note (note)
   (let ((nl-note))
