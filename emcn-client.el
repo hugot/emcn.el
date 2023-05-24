@@ -1,3 +1,4 @@
+;; emcn-client.el --- Nextcloud Notes Client for Emacs  -*- lexical-binding: t; -*-
 
 (defvar emcn-token-alist '()
   "Alist containing authentication tokens for note instances. The
@@ -39,7 +40,7 @@ nextcloud instance that has the notes app installed."
         (json-error (message "Error parsing json from buffer: %s" (buffer-string)))))))
 
 (defun emcn--handle-note-saved (note-name save-or-update)
-  (let ((toot-buffer (current-buffer)))
+  (let ((note-buffer (current-buffer)))
     (lambda (status &rest args)
       (let ((status-code (url-http-parse-response)))
         (with-current-buffer (car (mm-dissect-buffer t))
@@ -48,12 +49,16 @@ nextcloud instance that has the notes app installed."
               (progn
                 (when (eq save-or-update 'save)
                   (let ((json (emcn--json-preset (json-read))))
-                    (with-current-buffer toot-buffer
+                    (with-current-buffer note-buffer
                       (setq emcn-note-id (alist-get 'id json)))))
 
                 (if (not (or (= 201 status-code) (= 200 status-code)))
-                    (message "Something went wrong while saving note. Status code: %s" status-code)
-                  (progn (with-current-buffer toot-buffer (emcn--set-note-name note-name))
+                    (let ((err-buffer (generate-new-buffer "emcn-error"))
+                          (resp-contents (buffer-string)))
+                      (message "Something went wrong while saving note. Status code: %s, see buffer %s"
+                               status-code err-buffer)
+                      (with-current-buffer err-buffer (insert resp-contents)))
+                  (progn (with-current-buffer note-buffer (emcn--set-note-name note-name))
                          (message "[EMCN] Note saved."))))
             (json-error (message "[EMCN] Error parsing json from buffer: %s" (buffer-string)))))))))
 

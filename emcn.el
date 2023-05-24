@@ -55,6 +55,31 @@
 (defvar-local emcn-note-name nil
   "The name of the note in the current buffer")
 
+
+
+(defvar-local emcn-note-idle-timer nil
+  "Idle timer that saves notes after a certain idle time. Buffer local.")
+
+(defvar-local emcn-note-deleted nil
+  "Whether or not the note in the current buffer has been
+  deleted from the server after being instructed to do so by the
+  user.")
+
+(defun emcn--save-on-idle (buffer)
+  (let ((timer))
+    (setq timer
+          (run-with-idle-timer
+           5
+           t
+           (lambda ()
+             (if (not (buffer-live-p buffer))
+                 (cancel-timer timer)
+               (with-current-buffer buffer
+                 (when (and (not emcn-note-deleted) (buffer-modified-p buffer))
+                   (emcn-save)
+                   (set-buffer-modified-p nil)))))))
+    (setq emcn-note-idle-timer timer)))
+
 (define-minor-mode emcn-mode
   "Minor mode to use Nextcloud Notes from Emacs"
   :lighter "EMCN"

@@ -1,3 +1,5 @@
+;; emcn-notes-list.el --- Nextcloud Notes Client for Emacs  -*- lexical-binding: t; -*-
+
 (require 'emcn)
 
 (defun emcn-get-note-tags (title)

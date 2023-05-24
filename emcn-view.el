@@ -1,3 +1,5 @@
+;; emcn-view.el --- Nextcloud Notes Client for Emacs  -*- lexical-binding: t; -*-
+
 (defcustom emcn-note-width 80 "Character width of a note"
   :type 'integer
   :group 'emcn)
