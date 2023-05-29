@@ -125,7 +125,7 @@
   (interactive)
   (let* ((client (emcn--get-client))
          (store (emcn--get-store))
-         (notes (emcn--client-get-notes
+         (notes (emcn-client-get-notes
                  client '("id" "etag" "modified"))))
     (emcn-store-transact store
       (dolist (json-note notes)
@@ -136,23 +136,23 @@
                            (emcn-note-etag existing))
                   (when (> (float-time (emcn-note-modified note))
                            (float-time (emcn-note-modified existing)))
-                    (emcn--client-update-note
+                    (emcn-client-update-note
                      client existing (emcn--put-store-if-no-error store) 'sync))
                 ;; Etag changed on the remote, if last modified time is later
                 ;; locally, we probably want to keep the local version.
                 (if (> (float-time (emcn-note-modified note))
                        (float-time (emcn-note-modified existing)))
-                       (emcn--client-update-note
+                       (emcn-client-update-note
                         client existing (emcn--put-store-if-no-error store) 'sync)
                       ;; If not, overwrite the local version
-                       (let ((note (emcn--client-get-note client (emcn-note-id note))))
+                       (let ((note (emcn-client-get-note client (emcn-note-id note))))
                          (emcn-store-put-note store note))))
-            (let ((note (emcn--client-get-note client (emcn-note-id note))))
+            (let ((note (emcn-client-get-note client (emcn-note-id note))))
               (emcn-store-put-note store note))))))
 
     (maphash (lambda (id note)
                (when (= (emcn-note-id note) 0)
-                 (emcn--client-save-note
+                 (emcn-client-save-note
                   client note (emcn--put-store-if-no-error store) 'sync)))
              (emcn-store-notes-by-local-id store))))
 
@@ -200,13 +200,13 @@
       (emcn-store-update-note store emcn-note))
     (rename-buffer (emcn-note-title emcn-note))
     (if (= (emcn-note-id emcn-note) 0)
-        (emcn--client-save-note client emcn-note
+        (emcn-client-save-note client emcn-note
                                 (lambda (err note)
                                   (funcall (emcn--put-store-if-no-error store)
                                            err note)
                                   (unless err
                                     (message "[EMCN] Note saved to server."))))
-      (emcn--client-update-note client emcn-note
+      (emcn-client-update-note client emcn-note
                                 (lambda (err note)
                                   (funcall (emcn--put-store-if-no-error store)
                                            err note)
@@ -224,7 +224,7 @@
   (interactive)
   (when emcn-note
     (let ((client (emcn--get-client)))
-      (emcn--client-delete-note client emcn-note)
+      (emcn-client-delete-note client emcn-note)
       (setq emcn-note nil)
       (setq emcn-note-deleted t)
       (rename-buffer (generate-new-buffer-name "[ɘ] DELETED")))))

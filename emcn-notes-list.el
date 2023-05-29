@@ -53,7 +53,7 @@
 
 (defun emcn-notes-list-collect-notes ()
   (let* ((client (emcn--get-client))
-         (cloud-notes (emcn--client-get-notes client))
+         (cloud-notes (emcn-client-get-notes client))
          (notes))
     (dolist (note cloud-notes)
       (push (emcn-notes-list-note note) notes))

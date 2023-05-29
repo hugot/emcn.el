@@ -9,7 +9,7 @@
   the cdr should be the access token for that instance.")
 
 
-(cl-defstruct (emcn--client
+(cl-defstruct (emcn-client
                (:constructor emcn--make-client))
   "Nextcloud notes client. Can be used to communicate with a
 nextcloud instance that has the notes app installed."
@@ -22,14 +22,14 @@ nextcloud instance that has the notes app installed."
         :documentation
         "Hostname that the nextcloud instance can be reached at"))
 
-(cl-defmethod emcn--client-endpoint ((client emcn--client) route)
-  (concat "https://" (emcn--client-host client) route))
+(cl-defmethod emcn-client-endpoint ((client emcn-client) route)
+  (concat "https://" (emcn-client-host client) route))
 
-(cl-defmethod emcn--client-url-headers ((client emcn--client))
+(cl-defmethod emcn-client-url-headers ((client emcn-client))
   `(("Content-Type" . "application/json")
-    ("Authorization" . ,(concat "Basic " (emcn--client-password client)))))
+    ("Authorization" . ,(concat "Basic " (emcn-client-password client)))))
 
-(cl-defmethod emcn--client-get-notes ((client emcn--client) &optional attributes)
+(cl-defmethod emcn-client-get-notes ((client emcn-client) &optional attributes)
   (let ((query `((category ,emcn-category)))
         (att-options '("id" "etag" "readonly" "content"
                        "title" "category" "favourite" "modified")))
@@ -47,9 +47,9 @@ nextcloud instance that has the notes app installed."
                 ","))
             query))
 
-  (let* ((url-request-extra-headers (emcn--client-url-headers client))
+  (let* ((url-request-extra-headers (emcn-client-url-headers client))
          (response (url-retrieve-synchronously
-                    (emcn--client-endpoint
+                    (emcn-client-endpoint
                      client
                      (concat "/apps/notes/api/v1/notes?"
                              (url-build-query-string query))))))
@@ -83,12 +83,12 @@ nextcloud instance that has the notes app installed."
                                   (buffer-string))
                           nil)))))))
 
-(cl-defmethod emcn--client-get-note ((client emcn--client) id)
-  (let* ((url-request-extra-headers (emcn--client-url-headers client))
+(cl-defmethod emcn-client-get-note ((client emcn-client) id)
+  (let* ((url-request-extra-headers (emcn-client-url-headers client))
          (url-request-method "GET")
          (response-buffer
           (url-retrieve-synchronously
-           (emcn--client-endpoint client (format "/apps/notes/api/v1/notes/%d" id)) t)))
+           (emcn-client-endpoint client (format "/apps/notes/api/v1/notes/%d" id)) t)))
     (with-current-buffer response-buffer
       (let ((status-code (url-http-parse-response)))
         (with-current-buffer (car (mm-dissect-buffer t))
@@ -107,8 +107,8 @@ nextcloud instance that has the notes app installed."
              (error "[EMCN] Error parsing json from buffer: %s"
                     (buffer-string)))))))))
 
-(cl-defmethod emcn--client-save-note ((client emcn--client) (note emcn-note) callback &optional sync)
-  (let* ((url-request-extra-headers (emcn--client-url-headers client))
+(cl-defmethod emcn-client-save-note ((client emcn-client) (note emcn-note) callback &optional sync)
+  (let* ((url-request-extra-headers (emcn-client-url-headers client))
          (url-request-method "POST")
          (url-request-data (emcn--json-serialize-utf8
                             `((category . ,emcn-category)
@@ -117,36 +117,36 @@ nextcloud instance that has the notes app installed."
     (if sync
         (let ((buffer
                (url-retrieve-synchronously
-                (emcn--client-endpoint client "/apps/notes/api/v1/notes") t)))
+                (emcn-client-endpoint client "/apps/notes/api/v1/notes") t)))
           (with-current-buffer buffer
             (funcall (emcn--handle-note-saved callback) 'status)))
-      (url-retrieve (emcn--client-endpoint client "/apps/notes/api/v1/notes")
+      (url-retrieve (emcn-client-endpoint client "/apps/notes/api/v1/notes")
                     (emcn--handle-note-saved callback)
                   nil t))))
 
-(cl-defmethod emcn--client-update-note ((client emcn--client) (note emcn-note) callback &optional sync)
-  (let* ((url-request-extra-headers (emcn--client-url-headers client))
+(cl-defmethod emcn-client-update-note ((client emcn-client) (note emcn-note) callback &optional sync)
+  (let* ((url-request-extra-headers (emcn-client-url-headers client))
          (url-request-method "PUT")
          (url-request-data (emcn--json-serialize-utf8 (emcn-note-to-alist note))))
     (if sync
         (let ((buffer
                (url-retrieve-synchronously
-                (emcn--client-endpoint
+                (emcn-client-endpoint
                  client (format "/apps/notes/api/v1/notes/%d" (emcn-note-id note)))
                 t)))
           (with-current-buffer buffer
             (funcall (emcn--handle-note-saved callback) 'status)))
       (url-retrieve
-       (emcn--client-endpoint
+       (emcn-client-endpoint
         client (format "/apps/notes/api/v1/notes/%d" (emcn-note-id note)))
        (emcn--handle-note-saved callback)
        nil t))))
 
-(cl-defmethod emcn--client-delete-note ((client emcn--client) (note emcn-note))
-  (let* ((url-request-extra-headers (emcn--client-url-headers client))
+(cl-defmethod emcn-client-delete-note ((client emcn-client) (note emcn-note))
+  (let* ((url-request-extra-headers (emcn-client-url-headers client))
          (url-request-method "DELETE"))
     (url-retrieve-synchronously
-     (emcn--client-endpoint client (format "/apps/notes/api/v1/notes/%d" (emcn-note-id note)))
+     (emcn-client-endpoint client (format "/apps/notes/api/v1/notes/%d" (emcn-note-id note)))
      t)))
 
 (defun emcn--get-client ()
