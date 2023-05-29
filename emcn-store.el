@@ -72,9 +72,9 @@
     (dolist (json-note index)
       (let ((note (emcn-note-from-alist (cdr json-note))))
         (setf (emcn-note-content-hydrated note) nil)
+        (setf (emcn-note-local-id note) (symbol-name (car json-note)))
         (setf (emcn-note-content-file note)
               (emcn-store-note-file store note))
-        (setf (emcn-note-local-id note) (symbol-name (car json-note)))
         (puthash
          (emcn-note-id note) note notes)
 
@@ -111,6 +111,7 @@
               local-id (emcn-store-notes-by-local-id store))
         (setq local-id (emcn--genid)))
       (setf (emcn-note-local-id note) local-id)))
+
   (puthash
    (emcn-note-local-id note) note (emcn-store-notes-by-local-id store))
   (puthash (emcn-note-id note) note (emcn-store-notes store)))
