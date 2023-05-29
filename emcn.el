@@ -199,7 +199,7 @@
     (setf (emcn-note-content emcn-note) content)
     (emcn-store-transact store
       (emcn-store-update-note store emcn-note))
-    (rename-buffer (emcn-note-title emcn-note))
+    (rename-buffer (emcn-note-buffer-name (emcn-note-title emcn-note)))
     (if (= (emcn-note-id emcn-note) 0)
         (emcn-client-save-note client emcn-note
                                (lambda (err note)
