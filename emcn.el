@@ -24,6 +24,7 @@
 (require 'json)
 (require 'emcn-client)
 (require 'emcn-view)
+(require 'emcn-store)
 
 (defcustom emcn-enable-drafts t
   "Whether or not EMCN should save notes automatically on idle."
@@ -46,16 +47,11 @@
   :type 'string
   :group 'emcn)
 
-(defun emcn--note-buffer-name (note-name)
+(defun emcn-note-buffer-name (note-name)
   (concat "[ɘ] *note* " note-name))
 
-(defvar-local emcn-note-id nil
-  "The id of the note in the current buffer")
-
-(defvar-local emcn-note-name nil
-  "The name of the note in the current buffer")
-
-
+(defvar-local emcn-note nil
+  "Note that is active in the current buffer")
 
 (defvar-local emcn-note-idle-timer nil
   "Idle timer that saves notes after a certain idle time. Buffer local.")
@@ -115,6 +111,61 @@
   (switch-to-buffer (generate-new-buffer "Note"))
   (emcn-mode 1))
 
+(defun emcn--set-note-name (name)
+  (setq-local emcn-note-name name)
+  (rename-buffer (emcn-note-buffer-name name)))
+
+(defun emcn--put-store-if-no-error (store)
+  (lambda (err note)
+    (if err
+        (error err)
+      (emcn-store-put-note store note))))
+
+(defun emcn-sync ()
+  (interactive)
+  (let* ((client (emcn--get-client))
+         (store (emcn--get-store))
+         (notes (emcn--client-get-notes
+                 client '("id" "etag" "modified"))))
+    (emcn-store-transact store
+      (dolist (json-note notes)
+        (let* ((note (emcn-note-from-alist json-note))
+               (existing (emcn-store-get-note store (emcn-note-id note))))
+          (if existing
+              (if (string= (emcn-note-etag note)
+                           (emcn-note-etag existing))
+                  (when (> (float-time (emcn-note-modified note))
+                           (float-time (emcn-note-modified existing)))
+                    (emcn--client-update-note
+                     client existing (emcn--put-store-if-no-error store) 'sync))
+                ;; Etag changed on the remote, if last modified time is later
+                ;; locally, we probably want to keep the local version.
+                (if (> (float-time (emcn-note-modified note))
+                       (float-time (emcn-note-modified existing)))
+                       (emcn--client-update-note
+                        client existing (emcn--put-store-if-no-error store) 'sync)
+                      ;; If not, overwrite the local version
+                       (let ((note (emcn--client-get-note client (emcn-note-id note))))
+                         (emcn-store-put-note store note))))
+            (let ((note (emcn--client-get-note client (emcn-note-id note))))
+              (emcn-store-put-note store note))))))
+
+    (maphash (lambda (id note)
+               (when (= (emcn-note-id note) 0)
+                 (emcn--client-save-note
+                  client note (emcn--put-store-if-no-error store) 'sync)))
+             (emcn-store-notes-by-local-id store))))
+
+(defun emcn--get-note-alist ()
+  (let* ((store (emcn--get-store))
+         (notes (emcn-store-notes store))
+         (alist))
+    (maphash (lambda (id note)
+               (push `(,(emcn-note-title note) . ,note)
+                     alist))
+             notes)
+    alist))
+
 (defun emcn-open (note)
   "Open a note."
   (interactive
@@ -124,43 +175,57 @@
                                       (mapcar #'car notes)
                                       nil t)))
       (alist-get note-name notes nil nil #'string=))))
-  (let* ((note-name (alist-get 'title note))
-         (buffer (get-buffer-create (emcn--note-buffer-name note-name))))
+  (let* ((note-name (emcn-note-title note))
+         (buffer (get-buffer-create (emcn-note-buffer-name note-name))))
 
     (switch-to-buffer buffer nil t)
     (unless emcn-mode (emcn-mode))
     (erase-buffer)
-    (insert (alist-get 'content note))
-    (setq-local emcn-note-id (alist-get 'id note))
+    (insert (emcn-note-content note))
+    (setq-local emcn-note note)
     (emcn--set-note-name note-name)))
 
 (defun emcn-save ()
   (interactive)
-  (let ((client (emcn--get-client))
-        (content (buffer-string)))
-    (if emcn-note-id
-        (emcn--client-update-note client
-                                   emcn-note-id
-                                   emcn-note-name
-                                   content)
-      (emcn--client-save-note client
-                               (format-time-string "%Y, %b %d %H:%M")
-                               content))
-  (setq emcn-note-deleted nil)))
+  (unless emcn-note
+    (setq-local
+     emcn-note
+     (emcn--make-note :title (format-time-string "%Y, %b %d %H:%M"))))
+
+  (let ((store (emcn--get-store))
+        (content (buffer-string))
+        (client (emcn--get-client)))
+    (setf (emcn-note-content emcn-note) content)
+    (emcn-store-transact store
+      (emcn-store-update-note store emcn-note))
+    (rename-buffer (emcn-note-title emcn-note))
+    (if (= (emcn-note-id emcn-note) 0)
+        (emcn--client-save-note client emcn-note
+                                (lambda (err note)
+                                  (funcall (emcn--put-store-if-no-error store)
+                                           err note)
+                                  (unless err
+                                    (message "[EMCN] Note saved to server."))))
+      (emcn--client-update-note client emcn-note
+                                (lambda (err note)
+                                  (funcall (emcn--put-store-if-no-error store)
+                                           err note)
+                                  (unless err
+                                    (message "[EMCN] Note saved to server.")))))
+    (setq emcn-note-deleted nil)))
 
 (defun emcn-set-name (name)
   (interactive (list (read-string "Note name: ")))
-  (setq emcn-note-name name)
+  (setf (emcn-note-title emcn-note) name)
   (emcn-save))
 
 (defun emcn-delete ()
   "Delete the note opened in the current buffer."
   (interactive)
-  (when emcn-note-id
+  (when emcn-note
     (let ((client (emcn--get-client)))
-      (emcn--client-delete-note client emcn-note-id)
-      (setq emcn-note-id nil)
-      (setq emcn-note-name nil)
+      (emcn--client-delete-note client emcn-note)
+      (setq emcn-note nil)
       (setq emcn-note-deleted t)
       (rename-buffer (generate-new-buffer-name "[ɘ] DELETED")))))
 

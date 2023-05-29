@@ -1,5 +1,8 @@
 ;; emcn-client.el --- Nextcloud Notes Client for Emacs  -*- lexical-binding: t; -*-
 
+(require 'emcn-util)
+(require 'emcn-note)
+
 (defvar emcn-token-alist '()
   "Alist containing authentication tokens for note instances. The
   car of each element should be the hostname of an instance, and
@@ -26,76 +29,125 @@ nextcloud instance that has the notes app installed."
   `(("Content-Type" . "application/json")
     ("Authorization" . ,(concat "Basic " (emcn--client-password client)))))
 
-(cl-defmethod emcn--client-get-notes ((client emcn--client))
+(cl-defmethod emcn--client-get-notes ((client emcn--client) &optional attributes)
+  (let ((query `((category ,emcn-category)))
+        (att-options '("id" "etag" "readonly" "content"
+                       "title" "category" "favourite" "modified")))
+    (when attributes
+      (dolist (att attributes)
+        (when (not (member att att-options))
+          (error "%s is not a valid attribute option" att)))
+
+      (push `(exclude
+              ,(string-join
+                (seq-filter
+                 (lambda (att)
+                   (not (member att attributes)))
+                 att-options)
+                ","))
+            query))
+
   (let* ((url-request-extra-headers (emcn--client-url-headers client))
          (response (url-retrieve-synchronously
                     (emcn--client-endpoint
                      client
                      (concat "/apps/notes/api/v1/notes?"
-                             (url-build-query-string `((category ,emcn-category))))))))
+                             (url-build-query-string query))))))
     (with-current-buffer (car (with-current-buffer response (mm-dissect-buffer t)))
       (goto-char (point-min))
       (condition-case err
           (emcn--json-preset (json-read))
-        (json-error (message "Error parsing json from buffer: %s" (buffer-string)))))))
+        (json-error (message "Error parsing json from buffer: %s" (buffer-string))))))))
 
-(defun emcn--handle-note-saved (note-name save-or-update)
-  (let ((note-buffer (current-buffer)))
-    (lambda (status &rest args)
+(defun emcn--handle-note-saved (callback)
+  (lambda (status &rest args)
+    (let ((status-code (url-http-parse-response)))
+      (with-current-buffer (car (mm-dissect-buffer t))
+        (goto-char (point-min))
+        (condition-case err
+            (progn
+              (let ((note (emcn-note-from-alist (emcn--json-preset (json-read)))))
+                (if (not (or (= 201 status-code) (= 200 status-code)))
+                    (let ((err-buffer (generate-new-buffer "emcn-error"))
+                          (resp-contents (buffer-string)))
+                      (with-current-buffer err-buffer (insert resp-contents))
+                      (funcall callback
+                               (format "Something went wrong while saving note. Status code: %s, see buffer %s"
+                                       status-code err-buffer)
+                               nil))
+                  (progn
+                    (funcall callback nil note)))))
+                (json-error
+                 (funcall callback
+                          (format "[EMCN] Error parsing json from buffer: %s"
+                                  (buffer-string))
+                          nil)))))))
+
+(cl-defmethod emcn--client-get-note ((client emcn--client) id)
+  (let* ((url-request-extra-headers (emcn--client-url-headers client))
+         (url-request-method "GET")
+         (response-buffer
+          (url-retrieve-synchronously
+           (emcn--client-endpoint client (format "/apps/notes/api/v1/notes/%d" id)) t)))
+    (with-current-buffer response-buffer
       (let ((status-code (url-http-parse-response)))
         (with-current-buffer (car (mm-dissect-buffer t))
           (goto-char (point-min))
           (condition-case err
               (progn
-                (when (eq save-or-update 'save)
-                  (let ((json (emcn--json-preset (json-read))))
-                    (with-current-buffer note-buffer
-                      (setq emcn-note-id (alist-get 'id json)))))
+                (let ((note (emcn-note-from-alist (emcn--json-preset (json-read)))))
+                  (if (not (or (= 201 status-code) (= 200 status-code)))
+                      (let ((err-buffer (generate-new-buffer "emcn-error"))
+                            (resp-contents (buffer-string)))
+                        (with-current-buffer err-buffer (insert resp-contents))
+                        (error "Something went wrong while retrieving note. Status code: %s, see buffer %s"
+                               status-code err-buffer))
+                    note)))
+            (json-error
+             (error "[EMCN] Error parsing json from buffer: %s"
+                    (buffer-string)))))))))
 
-                (if (not (or (= 201 status-code) (= 200 status-code)))
-                    (let ((err-buffer (generate-new-buffer "emcn-error"))
-                          (resp-contents (buffer-string)))
-                      (message "Something went wrong while saving note. Status code: %s, see buffer %s"
-                               status-code err-buffer)
-                      (with-current-buffer err-buffer (insert resp-contents)))
-                  (progn (with-current-buffer note-buffer (emcn--set-note-name note-name))
-                         (message "[EMCN] Note saved."))))
-            (json-error (message "[EMCN] Error parsing json from buffer: %s" (buffer-string)))))))))
-
-(cl-defmethod emcn--client-save-note ((client emcn--client) note-name content)
+(cl-defmethod emcn--client-save-note ((client emcn--client) (note emcn-note) callback &optional sync)
   (let* ((url-request-extra-headers (emcn--client-url-headers client))
          (url-request-method "POST")
          (url-request-data (emcn--json-serialize-utf8
-                             `((title . ,note-name)
-                               (content . ,content)
-                               (category . ,emcn-category)))))
-    (url-retrieve (emcn--client-endpoint client "/apps/notes/api/v1/notes")
-                  (emcn--handle-note-saved note-name 'save)
-                  nil t)))
+                            `((category . ,emcn-category)
+                              (title . ,(emcn-note-title note))
+                              (content . ,(emcn-note-content note))))))
+    (if sync
+        (let ((buffer
+               (url-retrieve-synchronously
+                (emcn--client-endpoint client "/apps/notes/api/v1/notes") t)))
+          (with-current-buffer buffer
+            (funcall (emcn--handle-note-saved callback) 'status)))
+      (url-retrieve (emcn--client-endpoint client "/apps/notes/api/v1/notes")
+                    (emcn--handle-note-saved callback)
+                  nil t))))
 
-(cl-defmethod emcn--client-update-note ((client emcn--client) note-id note-name content)
+(cl-defmethod emcn--client-update-note ((client emcn--client) (note emcn-note) callback &optional sync)
   (let* ((url-request-extra-headers (emcn--client-url-headers client))
          (url-request-method "PUT")
-         (url-request-data (emcn--json-serialize-utf8
-                             `((id . ,note-id)
-                               (title . ,note-name)
-                               (category . ,emcn-category)
-                               (content . ,content)))))
-    (url-retrieve (emcn--client-endpoint client (format "/apps/notes/api/v1/notes/%d" note-id))
-                  (emcn--handle-note-saved note-name 'update)
-                  nil t)))
+         (url-request-data (emcn--json-serialize-utf8 (emcn-note-to-alist note))))
+    (if sync
+        (let ((buffer
+               (url-retrieve-synchronously
+                (emcn--client-endpoint
+                 client (format "/apps/notes/api/v1/notes/%d" (emcn-note-id note)))
+                t)))
+          (with-current-buffer buffer
+            (funcall (emcn--handle-note-saved callback) 'status)))
+      (url-retrieve
+       (emcn--client-endpoint
+        client (format "/apps/notes/api/v1/notes/%d" (emcn-note-id note)))
+       (emcn--handle-note-saved callback)
+       nil t))))
 
-(cl-defmethod emcn--client-delete-note ((client emcn--client) note-id)
+(cl-defmethod emcn--client-delete-note ((client emcn--client) (note emcn-note))
   (let* ((url-request-extra-headers (emcn--client-url-headers client))
          (url-request-method "DELETE"))
     (url-retrieve-synchronously
-     (emcn--client-endpoint client (format "/apps/notes/api/v1/notes/%d" note-id))
+     (emcn--client-endpoint client (format "/apps/notes/api/v1/notes/%d" (emcn-note-id note)))
      t)))
-
-(defun emcn--set-note-name (name)
-  (setq-local emcn-note-name name)
-  (rename-buffer (emcn--note-buffer-name name)))
-
 
 (defun emcn--get-client ()
   (let ((password (emcn--get-password))
@@ -126,20 +178,6 @@ nextcloud instance that has the notes app installed."
                    "`emcn-token-alist` with it in your config. Use  C-h v emcn-token-alist\n"
                    "for more information about this variable\n")
            token)))
-
-(defsubst emcn--json-serialize-utf8 (json)
-  "Serialize a json object and encode the resulting string to UTF-8."
-  (encode-coding-string (emcn--json-preset (json-serialize json))
-                        'utf-8 t))
-
-(defmacro emcn--json-preset (&rest body)
-  "Define JSON preset to use when marshalling/unmarshalling json"
-
-  `(let ((json-array-type 'list)
-         (json-object-type 'alist)
-         (json-key-type 'symbol))
-     ,@body))
-
 
 (defun emcn--request-notes-password ()
   (let* ((host (emcn--get-host))
@@ -177,15 +215,5 @@ nextcloud instance that has the notes app installed."
   (if emcn-host
       emcn-host
     (emcn--request-host)))
-
-(defun emcn--get-note-alist ()
-  (let* ((client (emcn--get-client))
-         (notes (emcn--client-get-notes client))
-         (alist))
-    (dolist (note notes)
-      (push `(,(alist-get 'title note) . ,note)
-            alist))
-
-    alist))
 
 (provide 'emcn-client)
