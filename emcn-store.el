@@ -55,13 +55,16 @@
 
 (cl-defmethod emcn-store-note-file
   ((store emcn-store) (note emcn-note))
-  (format "%s/notes/%d.md"
-          (emcn-store-directory store) (emcn-note-id note)))
+  (format "%s/notes/%s.md"
+          (emcn-store-directory store) (emcn-note-local-id note)))
 
 (cl-defmethod emcn-store-hydrate ((store emcn-store))
   (let ((notes (make-hash-table :size 100
                                 :rehash-size 100
                                 :test 'equal))
+        (notes-by-local-id (make-hash-table :size 100
+                                            :rehash-size 100
+                                            :test 'equal))
         (index
          (when (file-exists-p (emcn-store-index-file store))
            (emcn--json-preset
@@ -73,8 +76,12 @@
               (emcn-store-note-file store note))
         (setf (emcn-note-local-id note) (symbol-name (car json-note)))
         (puthash
-         (emcn-note-id note) note notes)))
+         (emcn-note-id note) note notes)
 
+        (puthash
+         (emcn-note-local-id note) note notes-by-local-id)))
+
+    (setf (emcn-store-notes-by-local-id store) notes-by-local-id)
     (setf (emcn-store-notes store) notes)))
 
 (cl-defmethod emcn-store-commit ((store emcn-store))
@@ -115,8 +122,20 @@
 (cl-defmethod emcn-store-get-notes ((store emcn-store))
   (hash-table-values (emcn-store-notes store)))
 
-(cl-defmethod emcn-store-get-note ((store emcn-store) id)
+(cl-defmethod emcn-store-get-note ((store emcn-store) (id number))
   (gethash id (emcn-store-notes store)))
+
+(cl-defmethod emcn-store-get-note ((store emcn-store) (id string))
+  (gethash id (emcn-store-notes-by-local-id store)))
+
+(cl-defmethod emcn-store-delete-note ((store emcn-store) (note emcn-note))
+  (remhash (emcn-note-id note) (emcn-store-notes store))
+  (remhash (emcn-note-local-id note) (emcn-store-notes-by-local-id store)))
+
+(cl-defmethod emcn-store-delete-note ((store emcn-store) id)
+  (let ((note (emcn-store-get-note id)))
+    (when note
+      (emcn-store-delete-note store note))))
 
 (defmacro emcn-store-transact (store &rest body)
   (declare (indent 1))
