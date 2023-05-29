@@ -31,6 +31,8 @@ buffer margins"
 `emcn-note-width`"
   (let* ((width (emcn--get-viewport-width window))
          (margin (floor (/ (- width emcn-note-width) 2))))
+    (when (< margin 0)
+      (setq margin 0))
     (set-window-margins window margin margin)))
 
 (defun emcn-style-window (window)
