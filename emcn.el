@@ -223,8 +223,11 @@
   "Delete the note opened in the current buffer."
   (interactive)
   (when emcn-note
-    (let ((client (emcn--get-client)))
-      (emcn-client-delete-note client emcn-note)
+    (let ((store (emcn--get-store))
+          (client (emcn--get-client)))
+      (emcn-store-delete-note store emcn-note)
+      (unless (= 0 (emcn-note-id emcn-note))
+        (emcn-client-delete-note client emcn-note))
       (setq emcn-note nil)
       (setq emcn-note-deleted t)
       (rename-buffer (generate-new-buffer-name "[ɘ] DELETED")))))
