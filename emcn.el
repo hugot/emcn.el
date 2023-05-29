@@ -195,18 +195,22 @@
   (let ((store (emcn--get-store))
         (content (buffer-string))
         (client (emcn--get-client))
-        (local-id (emcn-note-local-id emcn-note)))
+        (local-id))
     (setf (emcn-note-content emcn-note) content)
     (emcn-store-transact store
       (emcn-store-update-note store emcn-note))
+
+    (setq local-id (emcn-note-local-id emcn-note))
+
     (rename-buffer (emcn-note-buffer-name (emcn-note-title emcn-note)))
     (if (= (emcn-note-id emcn-note) 0)
         (emcn-client-save-note client emcn-note
                                (lambda (err note)
-                                  (funcall (emcn--put-store-if-no-error store)
-                                           err note)
-                                  (unless err
-                                    (message "[EMCN] Note saved to server."))))
+                                 (setf (emcn-note-local-id note) local-id)
+                                 (funcall (emcn--put-store-if-no-error store)
+                                          err note)
+                                 (unless err
+                                   (message "[EMCN] Note saved to server."))))
       (emcn-client-update-note client emcn-note
                                (lambda (err note)
                                  (setf (emcn-note-local-id note) local-id)
