@@ -15,6 +15,7 @@ git clone https://github.com/hugot/emcn.el.git ~/projects/emcn.el
 ## Usage
 To name a few functionalities:
 
+- `M-x emcn-sync` to sync local and server notes.
 - `M-x emcn` to create a new note.
 - `M-x emcn-open` to open a note.
 - `M-x emcn-set-name` to set note name.
