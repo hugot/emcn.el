@@ -47,6 +47,22 @@ https://github.com/nextcloud/notes/blob/main/docs/api/v1.md"
      (setf (emcn-note-content-hydrated ,note) t)
      (setf (emcn-note-content-string ,note) ,content)))
 
+(cl-defmethod emcn-note-summary ((note emcn-note) &optional length)
+  (unless length (setq length 130))
+  (let ((summary-text ""))
+  (if (emcn-note-content-hydrated note)
+      (progn
+        (when(< (length (emcn-note-content note)) length)
+          (setq length (length (emcn-note-content note))))
+        (setq summary-text (substring (emcn-note-content note) 0 length)))
+    (setq summary-text (emcn--head-file (emcn-note-content-file note) length)))
+
+  (let ((lines (split-string summary-text "\n" t "[[:blank:]]+")))
+    (if (> (length lines) 1)
+        (string-join (nthcdr 1 lines) " ")
+      (string-join lines " ")))))
+
+
 (cl-defmethod emcn-note-to-alist ((note emcn-note) &optional exclude-content exclude-id)
   (let ((note-alist
          `((etag . ,(emcn-note-etag note))

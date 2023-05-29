@@ -18,15 +18,15 @@
 (defun emcn-notes-list-note (note)
   (let ((nl-note))
     ;; TITLE
-    (push (cons "TITLE" (alist-get 'title note)) nl-note)
-    (push (cons "FILENAME" (alist-get 'title note)) nl-note)
+    (push (cons "TITLE" (emcn-note-title note)) nl-note)
+    (push (cons "FILENAME" (emcn-note-title note)) nl-note)
     ;; ICON and TAGS
     ;;;
     ;; Note: Nextcloud notes has no concept of tags, so we resort to using words
     ;; between angle brackets ([ and ]) at the start of the note title as
     ;; tags. The icon is then determined by the first tag that matches one of
     ;; `emcn-notes-list-icons'.
-    (let* ((tags (emcn-get-note-tags (alist-get 'title note)))
+    (let* ((tags (emcn-get-note-tags (emcn-note-title note)))
            (icon
             (catch 'break
               (dolist (icon emcn-notes-list-icons)
@@ -39,21 +39,15 @@
       (push (cons "TAGS" tags) nl-note))
 
     (push (cons "TIME-CREATION" 0) nl-note)
-    (push (cons "TIME-MODIFICATION" (alist-get 'modified note)) nl-note)
-    (push (cons "TIME-ACCESS" (alist-get 'modified note)) nl-note)
+    (push (cons "TIME-MODIFICATION" (emcn-note-modified note)) nl-note)
+    (push (cons "TIME-ACCESS" (emcn-note-modified note)) nl-note)
     (push (cons "SUMMARY" (emcn-note-summary note)) nl-note)
 
     nl-note))
 
-(defun emcn-note-summary (note)
-  (let* ((content (alist-get 'content note))
-         (lines (split-string content "\n" t)))
-    (when (> (length lines) 1)
-      (nth 1 lines))))
-
 (defun emcn-notes-list-collect-notes ()
-  (let* ((client (emcn--get-client))
-         (cloud-notes (emcn-client-get-notes client))
+  (let* ((store (emcn--get-store))
+         (cloud-notes (hash-table-values (emcn-store-notes-by-local-id store)))
          (notes))
     (dolist (note cloud-notes)
       (push (emcn-notes-list-note note) notes))
