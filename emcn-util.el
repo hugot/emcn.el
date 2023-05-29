@@ -18,12 +18,12 @@
   "First END characters of file as a string."
   (unless end (setq end 130))
   (with-temp-buffer
-    (insert-file-contents-literally file nil 0 end)
+    (insert-file-contents file nil 0 end)
     (buffer-string)))
 
 (defsubst emcn--file-contents (file)
   (with-temp-buffer
-    (insert-file-contents-literally file)
+    (insert-file-contents file)
     (buffer-string)))
 
 (defsubst emcn--write-string-to-file (string file)
