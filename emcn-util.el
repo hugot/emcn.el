@@ -29,7 +29,7 @@
 (defsubst emcn--write-string-to-file (string file)
   (with-temp-buffer
     (insert string)
-    (write-file file)))
+    (write-region (point-min) (point-max) file nil 'no-message)))
 
 
 (provide 'emcn-util)
