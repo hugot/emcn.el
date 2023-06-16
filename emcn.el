@@ -61,6 +61,9 @@
   deleted from the server after being instructed to do so by the
   user.")
 
+(defvar-local emcn--save (make-mutex)
+  "Mutex to hold for async note saving.")
+
 (defun emcn--save-on-idle (buffer)
   (let ((timer))
     (setq timer
@@ -89,6 +92,7 @@
             (when (not emcn-mode)
               (emcn-mode)))
         (progn
+          (setq emcn--save (make-mutex))
           (add-hook (make-local-variable 'window-configuration-change-hook)
                     'emcn--window-configuration-change-hook)
           (setq-local word-wrap t)
@@ -187,38 +191,49 @@
 
 (defun emcn-save ()
   (interactive)
-  (unless emcn-note
-    (setq-local
-     emcn-note
-     (emcn--make-note :title (format-time-string "%Y, %b %d %H:%M"))))
+  (make-thread
+   (lambda ()
+     (with-mutex emcn--save
+       (unless emcn-note
+         (setq-local
+          emcn-note
+          (emcn--make-note :title (format-time-string "%Y, %b %d %H:%M"))))
 
-  (let ((store (emcn--get-store))
-        (content (buffer-string))
-        (client (emcn--get-client))
-        (local-id))
-    (setf (emcn-note-content emcn-note) content)
-    (emcn-store-transact store
-      (emcn-store-update-note store emcn-note))
+       (let ((store (emcn--get-store))
+             (content (buffer-string))
+             (client (emcn--get-client))
+             (local-id)
+             (thread (current-thread))
+             (await-save (make-condition-variable emcn--save)))
+         (setf (emcn-note-content emcn-note) content)
+         (emcn-store-transact store
+           (emcn-store-update-note store emcn-note))
 
-    (setq local-id (emcn-note-local-id emcn-note))
+         (setq local-id (emcn-note-local-id emcn-note))
 
-    (rename-buffer (emcn-note-buffer-name (emcn-note-title emcn-note)))
-    (if (= (emcn-note-id emcn-note) 0)
-        (emcn-client-save-note client emcn-note
-                               (lambda (err note)
-                                 (setf (emcn-note-local-id note) local-id)
-                                 (funcall (emcn--put-store-if-no-error store)
-                                          err note)
-                                 (unless err
-                                   (message "[EMCN] Note saved to server."))))
-      (emcn-client-update-note client emcn-note
-                               (lambda (err note)
-                                 (setf (emcn-note-local-id note) local-id)
-                                 (funcall (emcn--put-store-if-no-error store)
-                                          err note)
-                                 (unless err
-                                   (message "[EMCN] Note saved to server.")))))
-    (setq emcn-note-deleted nil)))
+         (rename-buffer (emcn-note-buffer-name (emcn-note-title emcn-note)))
+         (if (= (emcn-note-id emcn-note) 0)
+             (emcn-client-save-note client emcn-note
+                                    (lambda (err note)
+                                      (setf (emcn-note-local-id note) local-id)
+                                      (funcall (emcn--put-store-if-no-error store)
+                                               err note)
+                                      (unless err
+                                        (setq emcn-note note)
+                                        (message "[EMCN] Note saved to server."))
+                                      (thread-signal thread 'saved nil)))
+           (emcn-client-update-note client emcn-note
+                                    (lambda (err note)
+                                      (setf (emcn-note-local-id note) local-id)
+                                      (funcall (emcn--put-store-if-no-error store)
+                                               err note)
+                                      (unless err
+                                        (setq emcn-note note)
+                                        (message "[EMCN] Note saved to server."))
+                                      (thread-signal thread 'saved nil))))
+         (setq emcn-note-deleted nil)
+
+         (condition-wait await-save))))))
 
 (defun emcn-set-name (name)
   (interactive (list (read-string "Note name: ")))
