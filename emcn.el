@@ -170,7 +170,7 @@
              notes)
     alist))
 
-(defun emcn-open (note)
+(defun emcn-open (note &optional other-window)
   "Open a note."
   (interactive
    (list
@@ -182,7 +182,9 @@
   (let* ((note-name (emcn-note-title note))
          (buffer (get-buffer-create (emcn-note-buffer-name note-name))))
 
-    (switch-to-buffer buffer nil t)
+    (if other-window
+        (switch-to-buffer-other-window buffer)
+      (switch-to-buffer buffer nil t))
     (unless emcn-mode (emcn-mode))
     (erase-buffer)
     (insert (emcn-note-content note))

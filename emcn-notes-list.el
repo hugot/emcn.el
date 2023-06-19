@@ -57,7 +57,7 @@
   (let* ((notes (emcn--get-note-alist))
          (note (alist-get title notes nil nil #'string=)))
     (if note
-        (emcn-open note)
+        (emcn-open note t)
       (error "No note found by title %s" title))))
 
 (provide 'emcn-notes-list)
