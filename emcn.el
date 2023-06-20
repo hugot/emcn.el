@@ -156,6 +156,8 @@
               (emcn-store-put-note store note))))))
 
     (maphash (lambda (id note)
+               ;; When note-id is 0, that means that it has not been saved to
+               ;; the server yet.
                (when (= (emcn-note-id note) 0)
                  (emcn-client-save-note
                   client note (emcn--put-store-if-no-error store) 'sync)))
@@ -163,7 +165,7 @@
 
 (defun emcn--get-note-alist ()
   (let* ((store (emcn--get-store))
-         (notes (emcn-store-notes store))
+         (notes (emcn-store-notes-by-local-id store))
          (alist))
     (maphash (lambda (id note)
                (push `(,(emcn-note-title note) . ,note)

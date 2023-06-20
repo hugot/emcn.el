@@ -114,7 +114,8 @@
 
   (puthash
    (emcn-note-local-id note) note (emcn-store-notes-by-local-id store))
-  (puthash (emcn-note-id note) note (emcn-store-notes store)))
+  (unless (= 0 (emcn-note-id note))
+    (puthash (emcn-note-id note) note (emcn-store-notes store))))
 
 (cl-defmethod emcn-store-update-note ((store emcn-store) (note emcn-note))
   (setf (emcn-note-modified note) (current-time))
