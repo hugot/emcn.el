@@ -123,8 +123,8 @@
   (lambda (err note)
     (if err
         (error err)
-      (emcn-store-transact
-          (emcn-store-put-note store note)))))
+      (emcn-store-transact store
+        (emcn-store-put-note store note)))))
 
 (defun emcn-sync ()
   (interactive)

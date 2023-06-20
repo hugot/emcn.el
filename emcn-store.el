@@ -143,6 +143,6 @@
   (declare (indent 1))
   `(progn
      ,@body
-     (emcn-store-commit store)))
+     (emcn-store-commit ,store)))
 
 (provide 'emcn-store)
