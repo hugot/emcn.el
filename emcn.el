@@ -206,7 +206,9 @@
              (client (emcn--get-client))
              (local-id)
              (thread (current-thread))
-             (await-save (make-condition-variable emcn--save)))
+             (note-buffer (current-buffer))
+             (await-save (make-condition-variable emcn--save))
+             (after-save-cb))
          (setf (emcn-note-content emcn-note) content)
          (emcn-store-transact store
            (emcn-store-update-note store emcn-note))
@@ -214,27 +216,26 @@
          (setq local-id (emcn-note-local-id emcn-note))
 
          (rename-buffer (emcn-note-buffer-name (emcn-note-title emcn-note)))
-         (if (= (emcn-note-id emcn-note) 0)
-             (emcn-client-save-note client emcn-note
-                                    (lambda (err note)
-                                      (setf (emcn-note-local-id note) local-id)
-                                      (funcall (emcn--put-store-if-no-error store)
-                                               err note)
-                                      (unless err
-                                        (setq emcn-note note)
-                                        (message "[EMCN] Note saved to server."))
-                                      (thread-signal thread 'saved nil)))
-           (emcn-client-update-note client emcn-note
-                                    (lambda (err note)
-                                      (setf (emcn-note-local-id note) local-id)
-                                      (funcall (emcn--put-store-if-no-error store)
-                                               err note)
-                                      (unless err
-                                        (setq emcn-note note)
-                                        (message "[EMCN] Note saved to server."))
-                                      (thread-signal thread 'saved nil))))
-         (setq emcn-note-deleted nil)
+         (setq after-save-cb
+               (lambda (err note)
+                 (funcall (emcn--put-store-if-no-error store)
+                          err note)
+                 (if err
+                     (message "[EMCN] Error: %s" err)
+                   (with-current-buffer note-buffer
+                     ;; Update buffer-local variables
+                     (setf (emcn-note-local-id note) local-id)
+                     (setq emcn-note note)
+                     (setq emcn-note-deleted nil)
+                     (message "[EMCN] Note saved to server.")))
+                 (thread-signal thread 'saved nil)))
 
+         (if (= (emcn-note-id emcn-note) 0)
+             (emcn-client-save-note client emcn-note after-save-cb)
+           (emcn-client-update-note client emcn-note after-save-cb))
+
+         ;; Wait for save action to finish, keeping the mutex locked and
+         ;; preventing other save threads linked to this buffer from executing.
          (condition-wait await-save))))))
 
 (defun emcn-set-name (name)
