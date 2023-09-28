@@ -47,6 +47,18 @@
   :type 'string
   :group 'emcn)
 
+(defvar emcn--debug nil)
+
+(defun emcn-toggle-debug ()
+  (interactive)
+  (setq emcn--debug (not emcn--debug))
+  (message "[EMCN] Debug logging %s." (if emcn--debug "enabled" "disabled")))
+
+(define-inline emcn--log (&rest args)
+  (inline-quote
+   (when emcn--debug
+      ,(cons 'message args))))
+
 (defun emcn-note-buffer-name (note-name)
   (concat "[ɘ] *note* " note-name))
 
@@ -130,30 +142,44 @@
   (interactive)
   (let* ((client (emcn--get-client))
          (store (emcn--get-store))
-         (notes (emcn-client-get-notes
-                 client '("id" "etag" "modified"))))
+         (fetch-attributes (if emcn--debug
+                               '("id" "etag" "modified" "title")
+                             '("id" "etag" "modified")))
+         (notes (emcn-client-get-notes client fetch-attributes)))
     (emcn-store-transact store
       (dolist (json-note notes)
         (let* ((note (emcn-note-from-alist json-note))
                (existing (emcn-store-get-note store (emcn-note-id note))))
+          (emcn--log "handling remote note %s" (emcn-note-title note))
           (if existing
-              (if (string= (emcn-note-etag note)
-                           (emcn-note-etag existing))
-                  (when (> (float-time (emcn-note-modified note))
-                           (float-time (emcn-note-modified existing)))
-                    (emcn-client-update-note
-                     client existing (emcn--put-store-if-no-error store) 'sync))
+              (progn
+                (if (string= (emcn-note-etag note)
+                             (emcn-note-etag existing))
+                    (when (> (float-time (emcn-note-modified note))
+                             (float-time (emcn-note-modified existing)))
+                      (emcn-client-update-note
+                       client existing (emcn--put-store-if-no-error store) 'sync))
                 ;; Etag changed on the remote, if last modified time is later
                 ;; locally, we probably want to keep the local version.
-                (if (> (float-time (emcn-note-modified note))
-                       (float-time (emcn-note-modified existing)))
-                       (emcn-client-update-note
-                        client existing (emcn--put-store-if-no-error store) 'sync)
-                      ;; If not, overwrite the local version
-                       (let ((note (emcn-client-get-note client (emcn-note-id note))))
-                         (emcn-store-put-note store note))))
-            (let ((note (emcn-client-get-note client (emcn-note-id note))))
-              (emcn-store-put-note store note))))))
+                (if (> (float-time (emcn-note-modified existing))
+                       (float-time (emcn-note-modified note)))
+                    (progn
+                      (emcn--log
+                       "Overwriting remote with local (local modified after remote), %s vs %s"
+                       (time-stamp-string nil (emcn-note-modified existing))
+                       (time-stamp-string nil (emcn-note-modified note)))
+                      (emcn-client-update-note
+                        client existing (emcn--put-store-if-no-error store) 'sync))
+                  ;; If not, overwrite the local version
+                  (emcn--log
+                   "Overwriting local with remote (remote modified after local), %s vs %s"
+                   (time-stamp-string nil (emcn-note-modified note))
+                   (time-stamp-string nil (emcn-note-modified existing)))
+
+                  (let ((note (emcn-client-get-note client (emcn-note-id note))))
+                    (emcn-store-put-note store note))))
+                (let ((note (emcn-client-get-note client (emcn-note-id note))))
+                  (emcn-store-put-note store note)))))))
 
     (maphash (lambda (id note)
                ;; When note-id is 0, that means that it has not been saved to
